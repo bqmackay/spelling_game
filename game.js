@@ -222,7 +222,13 @@ function drawSpellingTest() {
 
     // Draw blue box with rounded corners
     ctx.fillStyle = 'lightblue';
-    roundRect(ctx, canvas.width / 2 - 200, canvas.height / 2 - 150, 400, 300, 20, true);
+    roundRect(ctx, canvas.width / 2 - 200, canvas.height / 2 - 180, 400, 360, 20, true);
+
+    // Draw instruction text
+    ctx.fillStyle = 'black';
+    ctx.font = 'bold 20px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('Spell the word shown in the image:', canvas.width / 2, canvas.height / 2 - 150);
 
     // Draw word image
     if (wordImage) {
@@ -231,13 +237,13 @@ function drawSpellingTest() {
 
     // Draw text field
     ctx.fillStyle = 'white';
-    roundRect(ctx, canvas.width / 2 - 150, canvas.height / 2 + 50, 300, 40, 10, true);
+    roundRect(ctx, canvas.width / 2 - 150, canvas.height / 2 + 80, 300, 40, 10, true);
 
     // Draw user input
     ctx.fillStyle = 'black';
     ctx.font = '24px Arial';
     ctx.textAlign = 'left';
-    ctx.fillText(userInput, canvas.width / 2 - 140, canvas.height / 2 + 75);
+    ctx.fillText(userInput, canvas.width / 2 - 140, canvas.height / 2 + 105);
 }
 
 function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
