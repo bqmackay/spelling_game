@@ -1,3 +1,7 @@
+import { Projectile, projectileTypes, SplashEffect } from './projectiles.js';
+import { PROJECTILE_SIZE, score, incrementScore } from './config.js';
+import { waves } from './waves.js';
+
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
@@ -17,7 +21,6 @@ const PLAYER_SPEED = 5;
 const ENEMY_SPEED = 2;
 const MAX_HEALTH = 10;
 const HEALTH_BOX_SPAWN_INTERVAL = 10000; // 10 seconds
-const PROJECTILE_SIZE = PLAYER_SIZE / 2;
 const PROJECTILE_SPEED = 3;
 const SHOOT_INTERVAL = 1000; // 1 second
 
@@ -33,6 +36,7 @@ const player = {
 const enemies = [];
 let healthBox = null;
 const projectiles = [];
+const splashEffects = [];
 
 // Camera
 const camera = {
@@ -53,7 +57,6 @@ document.addEventListener('keyup', (e) => {
 
 // Add these new variables
 let gameOver = false;
-let score = 0;
 let currentWave = 0;
 let enemiesRemaining = 0;
 let waveComplete = false;
@@ -61,6 +64,8 @@ let spellingTest = false;
 let currentWord = '';
 let wordImage = null;
 let userInput = '';
+let currentProjectileType = projectileTypes[0];
+let equipmentSelection = false;
 
 // Modify the movePlayer function
 function movePlayer() {
@@ -167,7 +172,7 @@ function checkCollisions() {
             ) {
                 enemies.splice(j, 1);
                 projectiles.splice(i, 1);
-                score += 10; // Increase score when enemy is destroyed
+                incrementScore(10); // Increase score when enemy is destroyed
                 break;
             }
         }
@@ -305,13 +310,18 @@ function draw() {
         );
     });
 
+    // Draw splash effects
+    splashEffects.forEach(effect => effect.draw(ctx, camera.x, camera.y));
+
     // Draw score
     ctx.fillText(`Score: ${score}`, 10, 60);
 
     // Draw wave number
     ctx.fillText(`Wave: ${currentWave + 1}`, 10, 90);
 
-    if (spellingTest) {
+    if (equipmentSelection) {
+        drawEquipmentSelection();
+    } else if (spellingTest) {
         drawSpellingTest();
     } else if (waveComplete) {
         drawWaveCompleteScreen();
@@ -324,11 +334,30 @@ function draw() {
 function updateProjectiles() {
     for (let i = projectiles.length - 1; i >= 0; i--) {
         const projectile = projectiles[i];
-        projectile.x += projectile.vx;
-        projectile.y += projectile.vy;
+        projectile.update();
+
+        // Check for collision with enemies
+        let collisionIndex = -1;
+        for (let j = enemies.length - 1; j >= 0; j--) {
+            const enemy = enemies[j];
+            if (
+                projectile.x < enemy.x + enemy.size &&
+                projectile.x + projectile.size > enemy.x &&
+                projectile.y < enemy.y + enemy.size &&
+                projectile.y + projectile.size > enemy.y
+            ) {
+                collisionIndex = j;
+                break;
+            }
+        }
+
+        if (collisionIndex !== -1) {
+            projectile.explode(enemies, collisionIndex, splashEffects);
+            projectiles.splice(i, 1);
+        }
 
         // Remove projectiles that are out of bounds
-        if (
+        else if (
             projectile.x < 0 ||
             projectile.x > ARENA_SIZE ||
             projectile.y < 0 ||
@@ -339,11 +368,20 @@ function updateProjectiles() {
     }
 }
 
+// Add this new function
+function updateSplashEffects() {
+    for (let i = splashEffects.length - 1; i >= 0; i--) {
+        splashEffects[i].update();
+        if (splashEffects[i].isFinished()) {
+            splashEffects.splice(i, 1);
+        }
+    }
+}
+
 // Modify this function
 function shootProjectile() {
     if (gameOver || waveComplete || enemies.length === 0) return;
 
-    // Find the closest enemy
     let closestEnemy = enemies[0];
     let closestDistance = Infinity;
 
@@ -358,36 +396,29 @@ function shootProjectile() {
         }
     }
 
-    // Calculate angle to the closest enemy
-    const angle = Math.atan2(
-        closestEnemy.y - player.y,
-        closestEnemy.x - player.x
+    const projectile = new Projectile(
+        player.x + player.size / 2,
+        player.y + player.size / 2,
+        currentProjectileType.speed,
+        currentProjectileType.splashRadius
     );
-
-    const vx = Math.cos(angle) * PROJECTILE_SPEED;
-    const vy = Math.sin(angle) * PROJECTILE_SPEED;
-
-    projectiles.push({
-        x: player.x + player.size / 2 - PROJECTILE_SIZE / 2,
-        y: player.y + player.size / 2 - PROJECTILE_SIZE / 2,
-        size: PROJECTILE_SIZE,
-        vx: vx,
-        vy: vy
-    });
+    projectile.fire(closestEnemy.x, closestEnemy.y);
+    projectiles.push(projectile);
 }
 
 // Modify the gameLoop function
 function gameLoop() {
-    if (!waveComplete && !gameOver && !spellingTest) {
+    if (!waveComplete && !gameOver && !spellingTest && !equipmentSelection) {
         movePlayer();
         moveEnemies();
         updateProjectiles();
+        updateSplashEffects();
         updateCamera();
         checkCollisions();
         
         if (Math.random() < 0.02) spawnEnemy(); // 2% chance to spawn an enemy each frame
 
-        score++; // Increment score each frame
+        incrementScore(1); // Increment score each frame
 
         // Check if the wave is complete
         if (enemies.length === 0 && enemiesRemaining === 0) {
@@ -421,7 +452,7 @@ function startNextWave() {
         currentWave++;
         enemiesRemaining = waves[currentWave - 1].totalEnemies;
         waveComplete = false;
-        startSpellingTest(); // Start spelling test before the next wave
+        equipmentSelection = true; // Start equipment selection before spelling test
     } else {
         console.log("All waves complete!");
         gameOver = true; // End the game if all waves are complete
@@ -468,6 +499,23 @@ canvas.addEventListener('click', (e) => {
             y > canvas.height / 2 + 50 && y < canvas.height / 2 + 90) {
             startNextWave();
         }
+    } else if (equipmentSelection) {
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        projectileTypes.forEach((type, index) => {
+            if (
+                x > canvas.width / 2 - 100 &&
+                x < canvas.width / 2 + 100 &&
+                y > canvas.height / 2 - 50 + index * 60 &&
+                y < canvas.height / 2 + index * 60
+            ) {
+                currentProjectileType = type;
+                equipmentSelection = false;
+                startSpellingTest(); // Start spelling test after equipment selection
+            }
+        });
     }
 });
 
@@ -498,4 +546,22 @@ function startSpellingTest() {
     currentWord = getRandomWord();
     loadWordImage(currentWord);
     userInput = '';
+}
+
+function drawEquipmentSelection() {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = 'white';
+    ctx.font = '32px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('Select Your Projectile', canvas.width / 2, canvas.height / 2 - 100);
+
+    projectileTypes.forEach((type, index) => {
+        ctx.fillStyle = 'lightblue';
+        ctx.fillRect(canvas.width / 2 - 100, canvas.height / 2 - 50 + index * 60, 200, 50);
+        ctx.fillStyle = 'black';
+        ctx.font = '20px Arial';
+        ctx.fillText(type.name, canvas.width / 2, canvas.height / 2 - 20 + index * 60);
+    });
 }

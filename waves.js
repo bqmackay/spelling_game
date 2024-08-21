@@ -6,3 +6,5 @@ const waves = [
     { number: 5, totalEnemies: 30 },
     // Add more waves as needed
 ];
+
+export { waves };
